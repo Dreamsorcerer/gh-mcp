@@ -1,0 +1,57 @@
+# gh-mcp example configuration.
+#
+# Policy semantics: rules are evaluated in order, the first rule whose
+# actions AND repos (and paths, for gh_api_get) globs all match decides the
+# call. No matching rule means deny.
+#
+# Actions:
+#   repo:read code:read issue:read pr:read search:read release:read
+#   actions:read ghsa:read raw:read (gh_api_get passthrough)
+#   issue:create issue:comment pr:create pr:update ghsa:create_fork
+# "*:read" matches every read action.
+
+[github]
+token = "github_pat_..."        # fine-grained PAT (chmod 600 this file)
+
+[server]
+sock = "/run/gh-mcp/gh-mcp.sock"   # unix socket; serve via a reverse proxy
+
+[auth]
+resource = "https://mcp.example.org"
+secret =  # python3 -c "import secrets; print(secrets.token_hex(32))"
+[auth.users]
+user1 =  # when connecting, log in with these user=password credentials (chmod 600)
+
+[audit]
+path = "audit.jsonl"
+
+[email]
+to = "sam@foo.example"
+from = "gh-mcp@foo.example"
+hour = 7                        # local time; log is cleared after each send
+
+# Read everything (includes the gh_api_get raw passthrough).
+[[rule]]
+actions = ["*:read"]
+repos = ["*"]
+
+# Draft-only, clearly-labelled PRs in trusted orgs.
+[[rule]]
+actions = ["pr:create", "pr:update"]
+repos = ["aio-libs/*", "Dreamsorcerer/*"]
+[rule.constraints]
+draft_only = true
+title_prefix = "[agent] "
+body_prefix = "This PR was agent-authored via gh-mcp.\n\n"
+
+# Comments and issues, marked as agent-authored.
+[[rule]]
+actions = ["issue:comment", "issue:create"]
+repos = ["aio-libs/*"]
+[rule.constraints]
+body_suffix = "\n\n*Posted by an agent via [gh-mcp](https://github.com/Dreamsorcerer/gh-mcp).*"
+
+# GHSA private forks for the security workflow.
+[[rule]]
+actions = ["ghsa:create_fork"]
+repos = ["aio-libs/aiohttp"]
