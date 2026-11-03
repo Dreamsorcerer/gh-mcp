@@ -1,8 +1,8 @@
 """Repository security advisory (GHSA) tools."""
 
-from typing import Final, TypedDict
+from typing import TypedDict
 
-from aiohttp_mcp import MCPRequest, Tool
+from aiohttp_mcp import MCPRequest
 
 from ..github import paginate
 from ._base import GATE, Repo
@@ -73,10 +73,3 @@ async def create_advisory_fork(ctx: MCPRequest, repo: Repo, ghsa_id: str) -> Rep
             data = await resp.json()
         write.url = data["html_url"]
     return {"full_name": data["full_name"], "url": write.url}
-
-
-TOOLS: Final = (
-    Tool(list_repo_advisories, read_only=True, idempotent=True),
-    Tool(get_advisory, read_only=True, idempotent=True),
-    Tool(create_advisory_fork, destructive=False, idempotent=True),
-)

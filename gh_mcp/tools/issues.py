@@ -1,8 +1,8 @@
 """Issue tools."""
 
-from typing import Any, Final, Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
-from aiohttp_mcp import MCPRequest, Tool
+from aiohttp_mcp import MCPRequest
 
 from ..github import paginate
 from ..policy import apply_prefix, apply_suffix
@@ -170,12 +170,3 @@ async def add_comment(ctx: MCPRequest, repo: Repo, number: int, body: str) -> Co
             data = await resp.json()
         write.url = data["html_url"]
     return {"url": write.url}
-
-
-TOOLS: Final = (
-    Tool(list_issues, read_only=True, idempotent=True),
-    Tool(get_issue, read_only=True, idempotent=True),
-    Tool(search_issues, read_only=True, idempotent=True),
-    Tool(create_issue, destructive=False),
-    Tool(add_comment, destructive=False),
-)

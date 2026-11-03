@@ -1,8 +1,7 @@
 """Agent feedback: report missing access or tooling."""
 
-from typing import Final
 
-from aiohttp_mcp import MCPRequest, Tool
+from aiohttp_mcp import MCPRequest
 
 from ._base import GATE, _subject
 
@@ -22,6 +21,3 @@ async def report_missing_access(ctx: MCPRequest, description: str) -> None:
         decision="report",
         detail=description,
     )
-
-
-TOOLS: Final = (Tool(report_missing_access, read_only=True),)

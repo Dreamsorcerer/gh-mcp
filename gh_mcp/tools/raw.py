@@ -1,9 +1,8 @@
 """Raw GET passthrough for read endpoints without a dedicated tool."""
 
 import re
-from typing import Final
 
-from aiohttp_mcp import MCPRequest, Tool, ToolError
+from aiohttp_mcp import MCPRequest, ToolError
 
 from ._base import GATE
 
@@ -29,6 +28,3 @@ async def gh_api_get(
         else:
             data = await resp.text()
     return data if isinstance(data, dict) else {"result": data}
-
-
-TOOLS: Final = (Tool(gh_api_get, read_only=True, idempotent=True),)

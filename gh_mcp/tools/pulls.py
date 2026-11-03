@@ -1,9 +1,9 @@
 """Pull-request tools."""
 
-from typing import Any, Final, Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from aiohttp import hdrs
-from aiohttp_mcp import MCPRequest, Tool, ToolError
+from aiohttp_mcp import MCPRequest, ToolError
 
 from ..github import paginate
 from ..policy import apply_prefix, apply_suffix
@@ -189,13 +189,3 @@ async def update_pr(
             data = await resp.json()
         write.url = data["html_url"]
     return {"number": data["number"], "url": write.url, "draft": data["draft"]}
-
-
-TOOLS: Final = (
-    Tool(list_prs, read_only=True, idempotent=True),
-    Tool(get_pr, read_only=True, idempotent=True),
-    Tool(get_pr_diff, read_only=True, idempotent=True),
-    Tool(get_pr_files, read_only=True, idempotent=True),
-    Tool(create_pr, destructive=False),
-    Tool(update_pr, destructive=False, idempotent=True),
-)

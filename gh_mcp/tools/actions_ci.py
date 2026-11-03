@@ -1,8 +1,8 @@
 """GitHub Actions tools (read-only): workflow runs and job logs."""
 
-from typing import Final, TypedDict
+from typing import TypedDict
 
-from aiohttp_mcp import MCPRequest, Tool
+from aiohttp_mcp import MCPRequest
 
 from ..github import paginate
 from ._base import GATE, Repo
@@ -108,11 +108,3 @@ async def list_releases(
         }
         for release in items
     ]
-
-
-TOOLS: Final = (
-    Tool(list_workflow_runs, read_only=True, idempotent=True),
-    Tool(list_run_jobs, read_only=True, idempotent=True),
-    Tool(get_job_logs, read_only=True, idempotent=True),
-    Tool(list_releases, read_only=True, idempotent=True),
-)

@@ -1,9 +1,9 @@
 """Repository content and search tools (read-only)."""
 
 import base64
-from typing import Final, TypedDict
+from typing import TypedDict
 
-from aiohttp_mcp import MCPRequest, Tool, ToolError
+from aiohttp_mcp import MCPRequest, ToolError
 
 from ..github import paginate
 from ._base import GATE, Repo
@@ -107,11 +107,3 @@ async def search_code(ctx: MCPRequest, query: str, limit: int = 20) -> list[Code
         }
         for item in items
     ]
-
-
-TOOLS: Final = (
-    Tool(get_repo, read_only=True, idempotent=True),
-    Tool(get_file, read_only=True, idempotent=True),
-    Tool(list_dir, read_only=True, idempotent=True),
-    Tool(search_code, read_only=True, idempotent=True),
-)
