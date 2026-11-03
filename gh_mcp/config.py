@@ -28,6 +28,10 @@ class Constraints(TypedDict):
     body_suffix: NotRequired[str]
     # Path globs for the ``gh_api_get`` raw passthrough (absent = any).
     paths: NotRequired[list[str]]
+    # Prepended to branch names in git writes (idempotent), e.g. "agent/".
+    branch_prefix: NotRequired[str]
+    # Prepended to commit messages (idempotent).
+    message_prefix: NotRequired[str]
 
 
 # TODO(PY315): closed=True

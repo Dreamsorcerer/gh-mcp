@@ -4,13 +4,15 @@ from typing import Final
 
 from aiohttp_mcp import Tool
 
-from . import actions_ci, advisories, feedback, issues, pulls, raw, repos
+from . import actions_ci, advisories, feedback, git, issues, pulls, raw, repos
 from ._base import GATE, Gate
 
 __all__ = ("ALL_TOOLS", "GATE", "Gate")
 
 ALL_TOOLS: Final = (
     Tool(feedback.report_missing_access, read_only=True),
+    Tool(git.create_branch, destructive=False, idempotent=True),
+    Tool(git.commit_files, destructive=False),
     # Issues and pull requests: the day-to-day working set.
     Tool(issues.get_issue, read_only=True, idempotent=True),
     Tool(issues.list_issues, read_only=True, idempotent=True),

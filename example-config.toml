@@ -8,6 +8,7 @@
 #   repo:read code:read issue:read pr:read search:read release:read
 #   actions:read ghsa:read raw:read (gh_api_get passthrough)
 #   issue:create issue:comment pr:create pr:update ghsa:create_fork
+#   git:branch git:commit
 # "*:read" matches every read action.
 
 [github]
@@ -43,6 +44,14 @@ repos = ["aio-libs/*", "Dreamsorcerer/*"]
 draft_only = true
 title_prefix = "[agent] "
 body_prefix = "This PR was agent-authored via gh-mcp.\n\n"
+
+# Branches and commits, confined to agent/* branches by the forced prefix.
+[[rule]]
+actions = ["git:branch", "git:commit"]
+repos = ["aio-libs/*", "Dreamsorcerer/*"]
+[rule.constraints]
+branch_prefix = "agent/"
+message_prefix = "[agent] "
 
 # Comments and issues, marked as agent-authored.
 [[rule]]
