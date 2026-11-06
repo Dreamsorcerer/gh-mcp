@@ -140,7 +140,12 @@ async def get_pr_files(ctx: MCPRequest, repo: Repo, number: int) -> list[FileCha
 
 
 async def create_pr(
-    ctx: MCPRequest, repo: Repo, title: str, body: str, head: str, base: str
+    ctx: MCPRequest,
+    repo: Repo,
+    title: str,
+    body: Annotated[str, Doc("Keep it concise!")],
+    head: str,
+    base: str
 ) -> PRRef:
     """Open a pull request."""
     gate = ctx.http.app[GATE]

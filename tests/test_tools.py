@@ -255,6 +255,105 @@ async def test_get_job_logs_redirect_without_auth(
     assert seen_headers and "Authorization" not in seen_headers
 
 
+JOB_LOG = "\n".join(f"line {i}" for i in range(1, 21))
+
+
+async def test_get_job_logs_full(make_app: MakeApp, fake_github: FakeGitHub) -> None:
+    fake_github.add("GET", "/repos/o/r/actions/jobs/9/logs", JOB_LOG)
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client, "get_job_logs", {"repo": "o/r", "job_id": 9, "tail": 0}
+    )
+    assert result["content"][0]["text"] == JOB_LOG
+
+
+async def test_get_job_logs_offset(make_app: MakeApp, fake_github: FakeGitHub) -> None:
+    fake_github.add("GET", "/repos/o/r/actions/jobs/9/logs", JOB_LOG)
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client, "get_job_logs", {"repo": "o/r", "job_id": 9, "offset": 5, "limit": 3}
+    )
+    assert result["content"][0]["text"].splitlines() == [
+        "... (4 earlier lines omitted)",
+        "line 5",
+        "line 6",
+        "line 7",
+        "... (13 later lines omitted)",
+    ]
+    past_end = await call_tool(
+        client, "get_job_logs", {"repo": "o/r", "job_id": 9, "offset": 100}
+    )
+    assert "past the end" in tool_error(past_end)
+
+
+async def test_get_job_logs_grep(make_app: MakeApp, fake_github: FakeGitHub) -> None:
+    fake_github.add("GET", "/repos/o/r/actions/jobs/9/logs", JOB_LOG)
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client, "get_job_logs", {"repo": "o/r", "job_id": 9, "grep": "line (1|7)$"}
+    )
+    assert result["content"][0]["text"] == "1:line 1\n7:line 7"
+
+    capped = await call_tool(
+        client, "get_job_logs", {"repo": "o/r", "job_id": 9, "grep": "line", "limit": 2}
+    )
+    assert capped["content"][0]["text"].splitlines() == [
+        "1:line 1",
+        "2:line 2",
+        "... (18 more matching lines omitted)",
+    ]
+
+    none = await call_tool(
+        client, "get_job_logs", {"repo": "o/r", "job_id": 9, "grep": "zzz"}
+    )
+    assert none["content"][0]["text"] == "No matches in 20 log lines."
+
+    bad = await call_tool(
+        client, "get_job_logs", {"repo": "o/r", "job_id": 9, "grep": "("}
+    )
+    assert "Invalid grep regex" in tool_error(bad)
+
+
+async def test_list_workflow_runs_filters(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    fake_github.add(
+        "GET",
+        "/repos/o/r/actions/runs",
+        {
+            "workflow_runs": [
+                {
+                    "id": 1,
+                    "name": "CI",
+                    "head_branch": "main",
+                    "event": "push",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "created_at": "2026-11-03T04:05:06Z",
+                    "html_url": "u",
+                }
+            ]
+        },
+    )
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client,
+        "list_workflow_runs",
+        {"repo": "o/r", "status": "failure", "created": ">=2026-11-01",
+         "limit": 2, "page": 3},
+    )
+    run = result["structuredContent"][0]
+    assert run["conclusion"] == "failure"
+    assert run["created_at"] == "2026-11-03T04:05:06Z"
+    query = fake_github.requests[0][2]
+    assert query == {
+        "status": "failure",
+        "created": ">=2026-11-01",
+        "per_page": "2",
+        "page": "3",
+    }
+
+
 async def test_search_issues_parses_repository(
     make_app: MakeApp, fake_github: FakeGitHub
 ) -> None:

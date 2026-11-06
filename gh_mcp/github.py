@@ -49,15 +49,17 @@ async def paginate(
     params: Mapping[str, str] | None = None,
     limit: int,
     items_key: str | None = None,
+    page: int = 1,
 ) -> list[Any]:
-    """Follow pages until ``limit`` items (capped at :data:`MAX_PAGES`).
+    """Follow pages until ``limit`` items (capped at :data:`MAX_PAGES` pages).
 
-    ``items_key`` unwraps envelope responses (search, workflow runs).
+    ``items_key`` unwraps envelope responses (search, workflow runs);
+    ``page`` starts at that page (pages are ``limit``-sized up to 100).
     """
     items: list[Any] = []
     per_page = min(max(limit, 1), 100)
-    for page in range(1, MAX_PAGES + 1):
-        page_params = dict(params or {}) | {"per_page": str(per_page), "page": str(page)}
+    for page_num in range(page, page + MAX_PAGES):
+        page_params = dict(params or {}) | {"per_page": str(per_page), "page": str(page_num)}
         async with session.get(path, params=page_params) as resp:
             data = await resp.json()
         if items_key is not None:
