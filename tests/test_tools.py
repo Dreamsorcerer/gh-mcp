@@ -201,7 +201,7 @@ async def test_gh_api_get_path_policy(make_app: MakeApp, fake_github: FakeGitHub
     result = await call_tool(client, "gh_api_get", {"path": "/repos/o/r/branches"})
     assert not result.get("isError")
 
-    denied = await call_tool(client, "gh_api_get", {"path": "/user"})
+    denied = await call_tool(client, "gh_api_get", {"path": "/repos/o/other/branches"})
     assert "not permitted" in tool_error(denied)
     assert len(fake_github.requests) == 1
 
@@ -222,6 +222,17 @@ async def test_gh_api_get_rejects_relative_path(make_app: MakeApp) -> None:
     assert "absolute GitHub API path" in tool_error(result)
     result = await call_tool(client, "gh_api_get", {"path": "/repos/../user"})
     assert "absolute GitHub API path" in tool_error(result)
+
+
+async def test_gh_api_get_repo_scoped_only(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    # Even the broadest rule cannot reach account- or org-level endpoints.
+    client = await make_app([READ_ALL, Rule(actions=["raw:read"])])
+    for path in ("/user", "/user/repos", "/orgs/aio-libs/members", "/repos/incomplete"):
+        result = await call_tool(client, "gh_api_get", {"path": path})
+        assert "only repository paths" in tool_error(result), path
+    assert not fake_github.requests
 
 
 async def test_get_job_logs_redirect_without_auth(

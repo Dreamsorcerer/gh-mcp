@@ -1,9 +1,9 @@
 """Pull-request tools."""
 
-from typing import Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from aiohttp import hdrs
-from aiohttp_mcp import MCPRequest, ToolError
+from aiohttp_mcp import Doc, MCPRequest, ToolError
 
 from ..github import paginate
 from ..policy import apply_prefix, apply_suffix
