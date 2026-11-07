@@ -36,6 +36,7 @@ ALL_TOOLS: Final = (
     Tool(issues.create_issue, destructive=False),
     Tool(pulls.create_pr, destructive=False),
     Tool(pulls.update_pr, destructive=False, idempotent=True),
+    Tool(repos.create_fork, destructive=False, idempotent=True),
     # Security advisories.
     Tool(advisories.list_repo_advisories, read_only=True, idempotent=True),
     Tool(advisories.get_advisory, read_only=True, idempotent=True),

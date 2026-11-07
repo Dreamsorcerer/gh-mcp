@@ -8,7 +8,7 @@
 #   repo:read code:read issue:read pr:read search:read release:read
 #   actions:read ghsa:read raw:read (gh_api_get passthrough)
 #   issue:create issue:comment pr:create pr:update ghsa:create_fork
-#   git:branch git:commit
+#   repo:fork git:branch git:commit
 # "*:read" matches every read action.
 
 [github]

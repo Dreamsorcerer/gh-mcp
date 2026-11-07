@@ -155,6 +155,40 @@ async def test_failed_write_is_audited(
     assert "HTTP 404" in str(entry["detail"])
 
 
+async def test_create_fork(
+    make_app: MakeApp, fake_github: FakeGitHub, audit_path: Path
+) -> None:
+    fake_github.add(
+        "POST",
+        "/repos/aio-libs/aiohttp/forks",
+        {
+            "full_name": "me/aiohttp",
+            "default_branch": "master",
+            "html_url": "https://github.com/me/aiohttp",
+        },
+        status=202,
+    )
+    client = await make_app([Rule(actions=["repo:fork"], repos=["aio-libs/*"])])
+    result = await call_tool(client, "create_fork", {"repo": "aio-libs/aiohttp"})
+    assert result["structuredContent"] == {
+        "full_name": "me/aiohttp",
+        "default_branch": "master",
+        "url": "https://github.com/me/aiohttp",
+    }
+    (entry,) = audit_entries(audit_path)
+    assert entry["action"] == "repo:fork"
+    assert entry["decision"] == "allow"
+    assert entry["url"] == "https://github.com/me/aiohttp"
+
+
+async def test_create_fork_denied(make_app: MakeApp, fake_github: FakeGitHub) -> None:
+    client = await make_app([READ_ALL])
+    result = await call_tool(client, "create_fork", {"repo": "o/r"})
+    assert "repo:fork not permitted" in tool_error(result)
+    assert not fake_github.requests
+
+
+
 async def test_create_issue_labels(make_app: MakeApp, fake_github: FakeGitHub) -> None:
     fake_github.add(
         "POST", "/repos/o/r/issues", {"number": 3, "html_url": "u"}, status=201

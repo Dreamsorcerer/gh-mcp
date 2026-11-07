@@ -1,4 +1,4 @@
-"""Repository content and search tools (read-only)."""
+"""Repository content, search, and fork tools."""
 
 import base64
 from typing import TypedDict
@@ -34,6 +34,12 @@ class DirEntry(TypedDict):
 class CodeMatch(TypedDict):
     repository: str
     path: str
+    url: str
+
+
+class ForkRef(TypedDict):
+    full_name: str
+    default_branch: str
     url: str
 
 
@@ -107,3 +113,22 @@ async def search_code(ctx: MCPRequest, query: str, limit: int = 20) -> list[Code
         }
         for item in items
     ]
+
+
+async def create_fork(ctx: MCPRequest, repo: Repo) -> ForkRef:
+    """Fork a repository to the token's account.
+
+    Returns the existing fork if one is already present. Forking is
+    asynchronous on GitHub's side: the fork can take a few seconds to
+    become usable, so an immediate create_branch on it may briefly 404.
+    """
+    gate = ctx.http.app[GATE]
+    async with gate.write(ctx, "create_fork", "repo:fork", repo) as write:
+        async with gate.gh.post(f"/repos/{repo}/forks") as resp:
+            data = await resp.json()
+        write.url = data["html_url"]
+    return {
+        "full_name": data["full_name"],
+        "default_branch": data["default_branch"],
+        "url": data["html_url"],
+    }
