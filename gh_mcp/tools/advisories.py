@@ -3,17 +3,29 @@
 from typing import Annotated, Literal, NotRequired, TypedDict
 
 from aiohttp_mcp import Doc, MCPRequest, ToolError
+from pydantic import Field
+from yarl import URL
 
-from ..github import paginate
 from ._base import GATE, Repo
 
 
 class AdvisorySummary(TypedDict):
     ghsa_id: str
+    cve_id: str | None
     summary: str
     severity: str | None
     state: str
+    created_at: str | None
+    closed_at: str | None
     url: str
+
+
+class Credit(TypedDict):
+    login: str
+    type: Literal[
+        "analyst", "finder", "reporter", "coordinator", "remediation_developer",
+        "remediation_reviewer", "remediation_verifier", "tool", "sponsor", "other",
+    ]
 
 
 class AdvisoryDetail(TypedDict):
@@ -23,6 +35,10 @@ class AdvisoryDetail(TypedDict):
     severity: str | None
     state: str
     cve_id: str | None
+    created_at: str | None
+    published_at: str | None
+    closed_at: str | None
+    credits: list[Credit] | None
     url: str
 
 
@@ -46,29 +62,53 @@ class Vulnerability(TypedDict):
     vulnerable_functions: NotRequired[list[str] | None]
 
 
-class Credit(TypedDict):
-    login: str
-    type: Literal[
-        "analyst", "finder", "reporter", "coordinator", "remediation_developer",
-        "remediation_reviewer", "remediation_verifier", "tool", "sponsor", "other",
-    ]
+class AdvisoryPage(TypedDict):
+    advisories: list[AdvisorySummary]
+    # Pass as ``after`` to fetch the next page; None on the last page.
+    next_cursor: str | None
 
 
-async def list_repo_advisories(ctx: MCPRequest, repo: Repo) -> list[AdvisorySummary]:
-    """List a repository's security advisories (GHSAs)."""
+async def list_repo_advisories(
+    ctx: MCPRequest,
+    repo: Repo,
+    state: Literal["triage", "draft", "published", "closed"] | None = None,
+    limit: Annotated[int, Field(ge=1, le=100)] = 30,
+    after: Annotated[
+        str | None, Doc("Pagination cursor from a previous call's next_cursor")
+    ] = None,
+) -> AdvisoryPage:
+    """List a repository's security advisories (GHSAs), newest first."""
     gate = ctx.http.app[GATE]
     gate.check(ctx, "list_repo_advisories", "ghsa:read", repo)
-    items = await paginate(gate.gh, f"/repos/{repo}/security-advisories", limit=100)
-    return [
-        {
-            "ghsa_id": adv["ghsa_id"],
-            "summary": adv["summary"],
-            "severity": adv["severity"],
-            "state": adv["state"],
-            "url": adv["html_url"],
-        }
-        for adv in items
-    ]
+    params = {"per_page": str(limit)}
+    if state:
+        params["state"] = state
+    if after:
+        params["after"] = after
+    async with gate.gh.get(f"/repos/{repo}/security-advisories", params=params) as resp:
+        items = await resp.json()
+        next_link = resp.links.get("next")
+    next_cursor: str | None = None
+    if next_link is not None:
+        url = next_link["url"]
+        assert isinstance(url, URL)
+        next_cursor = url.query.get("after")
+    return {
+        "advisories": [
+            {
+                "ghsa_id": adv["ghsa_id"],
+                "cve_id": adv["cve_id"],
+                "summary": adv["summary"],
+                "severity": adv["severity"],
+                "state": adv["state"],
+                "created_at": adv["created_at"],
+                "closed_at": adv["closed_at"],
+                "url": adv["html_url"],
+            }
+            for adv in items
+        ],
+        "next_cursor": next_cursor,
+    }
 
 
 async def get_advisory(ctx: MCPRequest, repo: Repo, ghsa_id: str) -> AdvisoryDetail:
@@ -84,6 +124,10 @@ async def get_advisory(ctx: MCPRequest, repo: Repo, ghsa_id: str) -> AdvisoryDet
         "severity": data["severity"],
         "state": data["state"],
         "cve_id": data["cve_id"],
+        "created_at": data["created_at"],
+        "published_at": data["published_at"],
+        "closed_at": data["closed_at"],
+        "credits": data["credits"],
         "url": data["html_url"],
     }
 
@@ -158,5 +202,9 @@ async def update_advisory(
         "severity": data["severity"],
         "state": data["state"],
         "cve_id": data["cve_id"],
+        "created_at": data["created_at"],
+        "published_at": data["published_at"],
+        "closed_at": data["closed_at"],
+        "credits": data["credits"],
         "url": data["html_url"],
     }

@@ -449,6 +449,10 @@ async def test_update_advisory(
             "severity": "high",
             "state": "closed",
             "cve_id": None,
+            "created_at": "2026-10-01T00:00:00Z",
+            "published_at": None,
+            "closed_at": "2026-11-01T00:00:00Z",
+            "credits": None,
             "html_url": "https://github.com/o/r/security/advisories/GHSA-xxxx-yyyy-zzzz",
         },
     )
@@ -524,6 +528,10 @@ async def test_update_advisory_full_fields(
             "severity": None,
             "state": "draft",
             "cve_id": "CVE-2026-1234",
+            "created_at": "2026-10-01T00:00:00Z",
+            "published_at": None,
+            "closed_at": None,
+            "credits": [{"login": "iamibi", "type": "reporter"}],
             "html_url": "u",
         },
     )
@@ -570,3 +578,50 @@ async def test_update_advisory_severity_conflict(
     )
     assert "not both" in tool_error(result)
     assert not fake_github.requests
+
+
+async def test_list_advisories_filters_and_paging(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    fake_github.add(
+        "GET",
+        "/repos/o/r/security-advisories",
+        [
+            {
+                "ghsa_id": "GHSA-a",
+                "cve_id": None,
+                "summary": "s",
+                "severity": "low",
+                "state": "closed",
+                "created_at": "2026-01-01T00:00:00Z",
+                "closed_at": "2026-02-01T00:00:00Z",
+                "html_url": "u",
+            }
+        ],
+        headers={
+            "Link": '<https://x/repos/o/r/security-advisories'
+            '?per_page=1&after=cur123>; rel="next"'
+        },
+    )
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client, "list_repo_advisories", {"repo": "o/r", "state": "closed", "limit": 1}
+    )
+    page = result["structuredContent"]
+    assert page["advisories"][0]["closed_at"] == "2026-02-01T00:00:00Z"
+    assert page["next_cursor"] == "cur123"
+    assert fake_github.requests[0][2] == {"state": "closed", "per_page": "1"}
+
+    # Follow the cursor; the last page has no next Link.
+    fake_github.add("GET", "/repos/o/r/security-advisories", [])
+    result = await call_tool(
+        client,
+        "list_repo_advisories",
+        {"repo": "o/r", "state": "closed", "limit": 1, "after": "cur123"},
+    )
+    assert result["structuredContent"] == {"advisories": [], "next_cursor": None}
+    assert fake_github.requests[1][2] == {
+        "state": "closed",
+        "per_page": "1",
+        "after": "cur123",
+    }
