@@ -7,11 +7,7 @@ from ._base import GATE, _subject
 
 
 async def report_missing_access(ctx: MCPRequest, description: str) -> None:
-    """Report that access or a tool you need is missing from this server.
-
-    You MUST use this every time a task wants a GitHub operation or resource
-    this server does not expose or permit.
-    """
+    """Report that access or a tool you need is missing from this server."""
     gate = ctx.http.app[GATE]
     gate.audit.record(
         subject=_subject(ctx),

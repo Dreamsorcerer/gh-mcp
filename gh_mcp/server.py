@@ -20,6 +20,15 @@ from .policy import PolicyEngine
 from .tools import ALL_TOOLS, GATE, Gate
 
 USERS: Final = web.AppKey("USERS", dict[str, str])
+# This and a list of tool names are the only things an LLM is likely to see
+# at session start.
+INSTRUCTIONS = """You MUST use this server for authenticated access to Github.
+
+Use report_missing_access every time a task wants a GitHub operation or resource
+this server does not expose or permit.
+
+Prefer the targeted tools over gh_api_get.
+"""
 
 
 async def _check_credentials(username: str, password: str, request: web.Request) -> bool:
@@ -51,7 +60,7 @@ def build_app(cfg: Config) -> web.Application:
         name="gh-mcp",
         version=__version__,
         title="GitHub access",
-        description="You MUST use this server for authenticated access to Github",
+        instructions=INSTRUCTIONS,
         path=cfg.get("server", {}).get("path", DEFAULT_MCP_PATH),
         tools=aiohttp_mcp.ToolRegistry(*ALL_TOOLS),
         authorization=authorization,
