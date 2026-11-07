@@ -41,6 +41,7 @@ ALL_TOOLS: Final = (
     Tool(advisories.list_repo_advisories, read_only=True, idempotent=True),
     Tool(advisories.get_advisory, read_only=True, idempotent=True),
     Tool(advisories.create_advisory_fork, destructive=False, idempotent=True),
+    Tool(advisories.update_advisory, destructive=False, idempotent=True),
     # Passthrough.
     Tool(raw.gh_api_get, read_only=True, idempotent=True),
 )

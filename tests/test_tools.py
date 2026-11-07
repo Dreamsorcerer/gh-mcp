@@ -432,3 +432,141 @@ async def test_malformed_repo_rejected(make_app: MakeApp, fake_github: FakeGitHu
     result = await call_tool(client, "get_repo", {"repo": "a/b/c"})
     assert "Invalid arguments" in tool_error(result)
     assert not fake_github.requests
+
+
+async def test_update_advisory(
+    make_app: MakeApp, fake_github: FakeGitHub, audit_path: Path
+) -> None:
+    adv_path = "/repos/o/r/security-advisories/GHSA-xxxx-yyyy-zzzz"
+    fake_github.add("GET", adv_path, {"state": "draft"})
+    fake_github.add(
+        "PATCH",
+        adv_path,
+        {
+            "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+            "summary": "Oops",
+            "description": "Details",
+            "severity": "high",
+            "state": "closed",
+            "cve_id": None,
+            "html_url": "https://github.com/o/r/security/advisories/GHSA-xxxx-yyyy-zzzz",
+        },
+    )
+    client = await make_app([Rule(actions=["ghsa:update"], repos=["o/r"])])
+    result = await call_tool(
+        client,
+        "update_advisory",
+        {
+            "repo": "o/r",
+            "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+            "summary": "Oops",
+            "severity": "high",
+            "state": "closed",
+        },
+    )
+    assert result["structuredContent"]["state"] == "closed"
+    method, _, _, payload, _ = fake_github.requests[1]
+    assert method == "PATCH"
+    assert payload == {"summary": "Oops", "severity": "high", "state": "closed"}
+    (entry,) = audit_entries(audit_path)
+    assert entry["action"] == "ghsa:update"
+    assert entry["decision"] == "allow"
+
+
+async def test_update_advisory_published_refused(
+    make_app: MakeApp, fake_github: FakeGitHub, audit_path: Path
+) -> None:
+    adv_path = "/repos/o/r/security-advisories/GHSA-pppp-qqqq-rrrr"
+    fake_github.add("GET", adv_path, {"state": "published"})
+    client = await make_app([Rule(actions=["ghsa:update"], repos=["o/r"])])
+    result = await call_tool(
+        client,
+        "update_advisory",
+        {"repo": "o/r", "ghsa_id": "GHSA-pppp-qqqq-rrrr", "summary": "s"},
+    )
+    assert "only unpublished advisories" in tool_error(result)
+    assert [req[0] for req in fake_github.requests] == ["GET"]  # never patched
+    (entry,) = audit_entries(audit_path)
+    assert entry["decision"] == "error"
+
+
+async def test_update_advisory_cannot_publish(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    client = await make_app([Rule(actions=["ghsa:update"])])
+    # 'published' is not in the state schema; publishing is impossible.
+    result = await call_tool(
+        client,
+        "update_advisory",
+        {"repo": "o/r", "ghsa_id": "GHSA-x", "state": "published"},
+    )
+    assert "Invalid arguments" in tool_error(result)
+
+    empty = await call_tool(
+        client, "update_advisory", {"repo": "o/r", "ghsa_id": "GHSA-x"}
+    )
+    assert "Nothing to update" in tool_error(empty)
+    assert not fake_github.requests
+
+
+async def test_update_advisory_full_fields(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    adv_path = "/repos/o/r/security-advisories/GHSA-xxxx-yyyy-zzzz"
+    fake_github.add("GET", adv_path, {"state": "triage"})
+    fake_github.add(
+        "PATCH",
+        adv_path,
+        {
+            "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+            "summary": "s",
+            "description": "d",
+            "severity": None,
+            "state": "draft",
+            "cve_id": "CVE-2026-1234",
+            "html_url": "u",
+        },
+    )
+    client = await make_app([Rule(actions=["ghsa:update"], repos=["o/r"])])
+    vulnerability = {
+        "package": {"ecosystem": "pip", "name": "aiohttp"},
+        "vulnerable_version_range": "<=3.14.3",
+        "patched_versions": "3.14.4",
+    }
+    result = await call_tool(
+        client,
+        "update_advisory",
+        {
+            "repo": "o/r",
+            "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+            "vulnerabilities": [vulnerability],
+            "credits": [{"login": "iamibi", "type": "reporter"}],
+            "cvss_vector_string": "CVSS:3.1/AV:N/AC:L",
+        },
+    )
+    assert result["structuredContent"]["state"] == "draft"
+    method, _, _, payload, _ = fake_github.requests[1]
+    assert method == "PATCH"
+    assert payload == {
+        "vulnerabilities": [vulnerability],
+        "credits": [{"login": "iamibi", "type": "reporter"}],
+        "cvss_vector_string": "CVSS:3.1/AV:N/AC:L",
+    }
+
+
+async def test_update_advisory_severity_conflict(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    client = await make_app([Rule(actions=["ghsa:update"], repos=["o/r"])])
+    result = await call_tool(
+        client,
+        "update_advisory",
+        {
+            "repo": "o/r",
+            "ghsa_id": "GHSA-x",
+            "severity": "high",
+            "cvss_vector_string": "CVSS:3.1/AV:N",
+        },
+    )
+    assert "not both" in tool_error(result)
+    assert not fake_github.requests
