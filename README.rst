@@ -42,5 +42,28 @@ Rules are evaluated in file order; the first rule whose ``actions`` and
     body_prefix = "This PR was agent-authored.\n\n"
 
 Writes are curated tools only (``create_issue``, ``add_comment``,
-``create_pr``, ``update_pr``, ``create_advisory_fork``); reads are covered by
-dedicated tools plus a policy-gated raw GET passthrough (``gh_api_get``).
+``create_pr``, ``update_pr``, ``create_fork``, ``create_advisory_fork``);
+reads are covered by dedicated tools plus a policy-gated raw GET
+passthrough (``gh_api_get``).
+
+Per-call user approval
+----------------------
+
+A rule with ``effect = "elicit"`` lets a write tool work beyond the
+statically-allowed repositories, with each call individually approved by
+the user. The server answers the tool call with a URL elicitation: the
+user opens a single-use link served by this server, must be logged in
+(the same login as the OAuth flow) as the user the agent is connected
+as, and ticks Approve on a page describing the exact action. Only then
+does the client's retry perform the write, under the rule's constraints;
+an explicit ``deny`` rule earlier in the file still wins. For example,
+PRs and forks on any repository:
+
+.. code-block:: toml
+
+    [[rule]]
+    actions = ["pr:create", "pr:update", "repo:fork"]
+    effect = "elicit"
+    [rule.constraints]
+    draft_only = true
+    title_prefix = "[agent] "

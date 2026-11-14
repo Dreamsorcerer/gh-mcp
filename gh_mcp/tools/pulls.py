@@ -149,7 +149,8 @@ async def create_pr(
 ) -> PRRef:
     """Open a pull request."""
     gate = ctx.http.app[GATE]
-    async with gate.write(ctx, "create_pr", "pr:create", repo) as write:
+    detail = f'open pull request "{title}" from {head} into {base}'
+    async with gate.write(ctx, "create_pr", "pr:create", repo, detail=detail) as write:
         constraints = write.constraints
         payload: dict[str, object] = {
             "title": apply_prefix(title, constraints.get("title_prefix", "")),
@@ -176,7 +177,12 @@ async def update_pr(
 ) -> PRRef:
     """Update a pull request's title, body, or base branch."""
     gate = ctx.http.app[GATE]
-    async with gate.write(ctx, "update_pr", "pr:update", repo) as write:
+    fields = {"title": title, "body": body, "base": base}
+    changed = [name for name, value in fields.items() if value is not None]
+    if not changed:
+        raise ToolError("Nothing to update: provide title, body, or base")
+    detail = f"update the {', '.join(changed)} of pull request #{number}"
+    async with gate.write(ctx, "update_pr", "pr:update", repo, detail=detail) as write:
         constraints = write.constraints
         payload: dict[str, object] = {}
         if title is not None:
@@ -188,8 +194,6 @@ async def update_pr(
             )
         if base is not None:
             payload["base"] = base
-        if not payload:
-            raise ToolError("Nothing to update: provide title, body, or base")
         async with gate.gh.patch(f"/repos/{repo}/pulls/{number}", json=payload) as resp:
             data = await resp.json()
         write.url = data["html_url"]

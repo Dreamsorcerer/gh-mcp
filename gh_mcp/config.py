@@ -42,7 +42,9 @@ class Rule(TypedDict):
     actions: Annotated[list[str], validate_as(...).len(1)]
     # ``owner/repo`` globs, e.g. ``["aio-libs/*"]``. Absent = any.
     repos: NotRequired[list[str]]
-    effect: NotRequired[Literal["allow", "deny"]]
+    # ``elicit``: a matched write proceeds only after per-call user approval
+    # in the browser (login required); the rule's constraints then apply.
+    effect: NotRequired[Literal["allow", "deny", "elicit"]]
     constraints: NotRequired[Constraints]
 
 

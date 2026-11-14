@@ -15,6 +15,12 @@ from gh_mcp.github import github_session
 from gh_mcp.policy import PolicyEngine
 from gh_mcp.tools import ALL_TOOLS, GATE, Gate
 
+# Bearer token and OAuth subject of the agent in auth-enabled tests, and the
+# header carrying the logged-in browser user on approval-page requests.
+AGENT_TOKEN = "agent-token"
+SUBJECT = "sam"
+BROWSER_USER_HDR = "X-Browser-User"
+
 Client = TestClient[web.Request, web.Application]
 
 PROTOCOL_VERSION = "2026-07-28"
@@ -81,7 +87,7 @@ def make_app(
 ) -> MakeApp:
     """An MCP endpoint wired to the fake GitHub, with the given policy rules."""
 
-    async def maker(rules: list[Rule]) -> Client:
+    async def maker(rules: list[Rule], *, auth: bool = False) -> Client:
         gh_app = web.Application()
         gh_app.router.add_route("*", "/{tail:.*}", fake_github.handler)
         gh_client = await aiohttp_client(gh_app)
@@ -91,7 +97,32 @@ def make_app(
         session = github_session("test-pat", api_url)
         app = web.Application()
         app[GATE] = Gate(session, PolicyEngine(rules), AuditLog(audit_path))
-        aiohttp_mcp_server.setup(app, name="gh-mcp-test", tools=aiohttp_mcp_server.ToolRegistry(*ALL_TOOLS))
+        extra: dict[str, Any] = {}
+        if auth:
+            # Token auth plus a header-based browser identity, standing in
+            # for LocalAuthorization's login session on approval pages.
+            async def validate(token: str, request: web.Request) -> aiohttp_mcp_server.TokenInfo | None:
+                if token != AGENT_TOKEN:
+                    return None
+                return aiohttp_mcp_server.TokenInfo(scopes=frozenset({"github"}), subject=SUBJECT)
+
+            async def browser_user(request: web.Request) -> str | None:
+                return request.headers.get(BROWSER_USER_HDR)
+
+            extra = {
+                "authorization": aiohttp_mcp_server.Authorization(
+                    validate,
+                    resource="https://mcp.server.test",
+                    auth_servers=("https://auth.server.test",),
+                    default_scopes=("github",),
+                ),
+                "authenticate_request": browser_user,
+                # The TestClient connects via loopback, not the resource host.
+                "allowed_origins": ("127.0.0.1",),
+            }
+        aiohttp_mcp_server.setup(
+            app, name="gh-mcp-test", tools=aiohttp_mcp_server.ToolRegistry(*ALL_TOOLS), **extra
+        )
 
         async def github_client(app: web.Application) -> AsyncIterator[None]:
             async with session:
@@ -104,28 +135,37 @@ def make_app(
 
 
 async def call_tool(
-    client: Client, name: str, arguments: dict[str, object]
+    client: Client,
+    name: str,
+    arguments: dict[str, object],
+    *,
+    token: str | None = None,
+    capabilities: dict[str, object] | None = None,
+    input_responses: dict[str, object] | None = None,
+    request_state: str | None = None,
 ) -> dict[str, Any]:
     """Invoke a tool through the real MCP endpoint, returning the call result."""
-    body = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {
-            "name": name,
-            "arguments": arguments,
-            "_meta": {
-                "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
-                "io.modelcontextprotocol/clientCapabilities": {},
-            },
+    params: dict[str, object] = {
+        "name": name,
+        "arguments": arguments,
+        "_meta": {
+            "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+            "io.modelcontextprotocol/clientCapabilities": capabilities or {},
         },
     }
+    if input_responses is not None:
+        params["inputResponses"] = input_responses
+    if request_state is not None:
+        params["requestState"] = request_state
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
     headers = {
         "Accept": "application/json, text/event-stream",
         "Mcp-Method": "tools/call",
         "Mcp-Name": name,
         "MCP-Protocol-Version": PROTOCOL_VERSION,
     }
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
     async with client.post("/mcp", json=body, headers=headers) as resp:
         assert resp.status == 200, await resp.text()
         envelope = await resp.json()

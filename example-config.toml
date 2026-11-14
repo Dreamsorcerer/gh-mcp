@@ -2,7 +2,10 @@
 #
 # Policy semantics: rules are evaluated in order, the first rule whose
 # actions AND repos (and paths, for gh_api_get) globs all match decides the
-# call. No matching rule means deny.
+# call. No matching rule means deny. effect = "elicit" lets a write proceed
+# only after the user approves that specific call in the browser: a
+# single-use link served by this server, behind the same login as the
+# OAuth flow, usable only by the user the agent is connected as.
 #
 # Actions:
 #   code:read issue:read pr:read search:read release:read
@@ -64,3 +67,13 @@ body_suffix = "\n\n*Posted by an agent via [gh-mcp](https://github.com/Dreamsorc
 [[rule]]
 actions = ["ghsa:create_fork"]
 repos = ["aio-libs/aiohttp"]
+
+# Any other repository: PRs and forks are allowed per call, each one
+# individually approved by the user in the browser (login required).
+[[rule]]
+actions = ["pr:create", "pr:update", "repo:fork"]
+effect = "elicit"
+[rule.constraints]
+draft_only = true
+title_prefix = "[agent] "
+body_prefix = "This PR was agent-authored via gh-mcp.\n\n"

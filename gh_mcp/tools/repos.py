@@ -100,7 +100,9 @@ async def create_fork(ctx: MCPRequest, repo: Repo) -> ForkRef:
     become usable, so an immediate create_branch on it may briefly 404.
     """
     gate = ctx.http.app[GATE]
-    async with gate.write(ctx, "create_fork", "repo:fork", repo) as write:
+    async with gate.write(
+        ctx, "create_fork", "repo:fork", repo, detail="fork the repository"
+    ) as write:
         async with gate.gh.post(f"/repos/{repo}/forks") as resp:
             data = await resp.json()
         write.url = data["html_url"]

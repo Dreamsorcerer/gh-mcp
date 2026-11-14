@@ -1,8 +1,9 @@
 """Policy engine: maps (action, resource) to a decision with constraints.
 
 Rules are evaluated in configuration order; the first rule whose action and
-repo (and, for the raw passthrough, path) globs all match decides the call.
-No matching rule means deny.
+repo (and, for the raw passthrough, path) globs all match decides the call:
+``allow``, ``deny``, or ``elicit`` (allowed only after per-call user
+approval). No matching rule means deny.
 """
 
 from collections.abc import Sequence
@@ -19,6 +20,9 @@ class Decision:
     constraints: Constraints
     # 1-based index of the matched rule, 0 when no rule matched.
     rule: int
+    # The matched rule wants explicit user approval; ``allowed`` stays False
+    # until the approval is obtained (write tools only).
+    elicit: bool = False
 
 
 _NO_CONSTRAINTS = Constraints()
@@ -51,12 +55,22 @@ class PolicyEngine:
                 and not any(fnmatchcase(path, g.casefold()) for g in globs)
             ):
                 continue
-            if rule.get("effect", "allow") == "deny":
+            effect = rule.get("effect", "allow")
+            if effect == "deny":
                 return Decision(
                     False,
                     f"{action} on {resource or 'this resource'} is denied by policy",
                     _NO_CONSTRAINTS,
                     index,
+                )
+            if effect == "elicit":
+                return Decision(
+                    False,
+                    f"{action} on {resource or 'this resource'}"
+                    " requires explicit user approval",
+                    constraints,
+                    index,
+                    elicit=True,
                 )
             return Decision(True, "allowed", constraints, index)
         return Decision(

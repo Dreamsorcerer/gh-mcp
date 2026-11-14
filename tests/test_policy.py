@@ -39,6 +39,30 @@ def test_constraints_returned_from_matched_rule() -> None:
     assert engine.check("pr:create", "o/r").constraints is constraints
 
 
+def test_elicit_effect() -> None:
+    constraints = Constraints(draft_only=True)
+    engine = PolicyEngine(
+        [
+            Rule(actions=["pr:create"], repos=["aio-libs/*"]),
+            Rule(actions=["pr:create", "repo:fork"], effect="elicit", constraints=constraints),
+        ]
+    )
+    # An earlier allow is untouched by a later elicit catch-all.
+    allowed = engine.check("pr:create", "aio-libs/aiohttp")
+    assert allowed.allowed and not allowed.elicit
+    # Matched elicit: not allowed yet, flagged, constraints carried for
+    # the approved write.
+    decision = engine.check("pr:create", "octo/hello")
+    assert not decision.allowed
+    assert decision.elicit
+    assert "requires explicit user approval" in decision.reason
+    assert decision.constraints is constraints
+    assert decision.rule == 2
+    # Unmatched actions still fall through to the default deny.
+    unmatched = engine.check("git:branch", "octo/hello")
+    assert not unmatched.allowed and not unmatched.elicit
+
+
 def test_paths_glob_narrows_raw_rules() -> None:
     engine = PolicyEngine(
         [
