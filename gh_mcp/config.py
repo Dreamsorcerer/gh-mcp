@@ -18,7 +18,8 @@ DEFAULT_EMAIL_HOUR: Final = 7
 class Constraints(TypedDict):
     """Server-enforced transforms and restrictions for write actions."""
 
-    # Force created PRs to draft status.
+    # Force created PRs to draft status; update_pr may then only edit
+    # pull requests still in draft.
     draft_only: NotRequired[bool]
     # Prepended to PR/issue titles (idempotent: not doubled).
     title_prefix: NotRequired[str]

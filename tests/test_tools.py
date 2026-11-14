@@ -107,6 +107,63 @@ async def test_create_pr_constraints(
     assert entry["action"] == "pr:create"
 
 
+async def test_update_pr_draft_only_refuses_ready_pr(
+    make_app: MakeApp, fake_github: FakeGitHub, audit_path: Path
+) -> None:
+    fake_github.add("GET", "/repos/o/r/pulls/5", {"number": 5, "draft": False})
+    rule = Rule(
+        actions=["pr:update"], repos=["o/*"], constraints=Constraints(draft_only=True)
+    )
+    client = await make_app([rule])
+    result = await call_tool(
+        client, "update_pr", {"repo": "o/r", "number": 5, "title": "t"}
+    )
+    assert "not a draft" in tool_error(result)
+    # Only the state lookup reached GitHub; nothing was modified.
+    assert [r[:2] for r in fake_github.requests] == [("GET", "/repos/o/r/pulls/5")]
+    (entry,) = audit_entries(audit_path)
+    assert entry["decision"] == "error"
+
+
+async def test_update_pr_draft_only_edits_draft_pr(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    fake_github.add("GET", "/repos/o/r/pulls/5", {"number": 5, "draft": True})
+    fake_github.add(
+        "PATCH",
+        "/repos/o/r/pulls/5",
+        {"number": 5, "html_url": "https://github.com/o/r/pull/5", "draft": True},
+    )
+    rule = Rule(
+        actions=["pr:update"],
+        repos=["o/*"],
+        constraints=Constraints(draft_only=True, title_prefix="[agent] "),
+    )
+    client = await make_app([rule])
+    result = await call_tool(
+        client, "update_pr", {"repo": "o/r", "number": 5, "title": "t"}
+    )
+    assert result["structuredContent"]["draft"] is True
+    assert fake_github.requests[-1][:2] == ("PATCH", "/repos/o/r/pulls/5")
+    assert fake_github.requests[-1][3] == {"title": "[agent] t"}
+
+
+async def test_update_pr_without_draft_only_skips_lookup(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    fake_github.add(
+        "PATCH",
+        "/repos/o/r/pulls/5",
+        {"number": 5, "html_url": "https://github.com/o/r/pull/5", "draft": False},
+    )
+    client = await make_app([Rule(actions=["pr:update"], repos=["o/*"])])
+    result = await call_tool(
+        client, "update_pr", {"repo": "o/r", "number": 5, "base": "main"}
+    )
+    assert result["structuredContent"]["number"] == 5
+    assert [r[:2] for r in fake_github.requests] == [("PATCH", "/repos/o/r/pulls/5")]
+
+
 async def test_write_denied_is_audited(
     make_app: MakeApp, fake_github: FakeGitHub, audit_path: Path
 ) -> None:

@@ -184,6 +184,16 @@ async def update_pr(
     detail = f"update the {', '.join(changed)} of pull request #{number}"
     async with gate.write(ctx, "update_pr", "pr:update", repo, detail=detail) as write:
         constraints = write.constraints
+        if constraints.get("draft_only", False):
+            # Under draft_only an agent may only touch PRs still in draft:
+            # editing a PR already marked ready for review is refused.
+            async with gate.gh.get(f"/repos/{repo}/pulls/{number}") as resp:
+                current = await resp.json()
+            if not current["draft"]:
+                raise ToolError(
+                    f"pull request #{number} is not a draft;"
+                    " policy only permits editing draft pull requests"
+                )
         payload: dict[str, object] = {}
         if title is not None:
             payload["title"] = apply_prefix(title, constraints.get("title_prefix", ""))
