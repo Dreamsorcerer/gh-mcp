@@ -54,7 +54,7 @@ class GitHubConfig(TypedDict):
 
 # TODO(PY315): closed=True
 class AuthConfig(TypedDict):
-    """OAuth configuration (:class:`aiohttp_mcp.LocalAuthorization`)."""
+    """OAuth configuration (:class:`aiohttp_mcp_server.LocalAuthorization`)."""
 
     # Base URL this server is reachable at, e.g. ``https://mcp.example.org``.
     resource: str

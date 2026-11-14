@@ -2,7 +2,7 @@
 
 from typing import Final
 
-from aiohttp_mcp import Tool
+from aiohttp_mcp_server import Tool
 
 from . import actions_ci, advisories, feedback, git, issues, pulls, raw, repos
 from ._base import GATE, Gate
@@ -25,7 +25,6 @@ ALL_TOOLS: Final = (
     Tool(repos.get_file, read_only=True, idempotent=True),
     Tool(repos.list_dir, read_only=True, idempotent=True),
     Tool(repos.search_code, read_only=True, idempotent=True),
-    Tool(repos.get_repo, read_only=True, idempotent=True),
     # CI results.
     Tool(actions_ci.list_workflow_runs, read_only=True, idempotent=True),
     Tool(actions_ci.list_run_jobs, read_only=True, idempotent=True),

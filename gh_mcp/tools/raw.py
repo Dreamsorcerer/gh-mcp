@@ -2,7 +2,7 @@
 
 import re
 
-from aiohttp_mcp import MCPRequest, ToolError
+from aiohttp_mcp_server import MCPRequest, ToolError
 
 from ._base import GATE
 

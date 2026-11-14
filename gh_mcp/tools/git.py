@@ -3,7 +3,7 @@
 from typing import Annotated, Literal, NotRequired, TypedDict
 
 from aiohttp import ClientSession
-from aiohttp_mcp import Doc, MCPRequest
+from aiohttp_mcp_server import Doc, MCPRequest
 from pydantic import Field
 
 from ..policy import apply_prefix

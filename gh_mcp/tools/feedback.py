@@ -1,7 +1,7 @@
 """Agent feedback: report missing access or tooling."""
 
 
-from aiohttp_mcp import MCPRequest
+from aiohttp_mcp_server import MCPRequest
 
 from ._base import GATE, _subject
 

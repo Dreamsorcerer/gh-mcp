@@ -52,7 +52,7 @@ async def test_login_submit_checks_credentials(
         allow_redirects=False,
     )
     assert resp.status == 303
-    assert "__Host-aiohttp_mcp_session" in resp.headers.get("Set-Cookie", "") or resp.cookies
+    assert "__Host-aiohttp_mcp_server_session" in resp.headers.get("Set-Cookie", "") or resp.cookies
 
     resp = await client.post(
         "/oauth2/login", data={"username": "user1", "password": "wrong"}

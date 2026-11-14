@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
-import aiohttp_mcp
+import aiohttp_mcp_server
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient
@@ -91,7 +91,7 @@ def make_app(
         session = github_session("test-pat", api_url)
         app = web.Application()
         app[GATE] = Gate(session, PolicyEngine(rules), AuditLog(audit_path))
-        aiohttp_mcp.setup(app, name="gh-mcp-test", tools=aiohttp_mcp.ToolRegistry(*ALL_TOOLS))
+        aiohttp_mcp_server.setup(app, name="gh-mcp-test", tools=aiohttp_mcp_server.ToolRegistry(*ALL_TOOLS))
 
         async def github_client(app: web.Application) -> AsyncIterator[None]:
             async with session:

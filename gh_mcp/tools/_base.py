@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Annotated, Final
 
 from aiohttp import ClientSession, web
-from aiohttp_mcp import Doc, MCPRequest, ToolError
+from aiohttp_mcp_server import Doc, MCPRequest, ToolError
 from pydantic import Field
 
 from ..audit import AuditLog

@@ -3,18 +3,10 @@
 import base64
 from typing import TypedDict
 
-from aiohttp_mcp import MCPRequest, ToolError
+from aiohttp_mcp_server import MCPRequest, ToolError
 
 from ..github import paginate
 from ._base import GATE, Repo
-
-
-class RepoInfo(TypedDict):
-    full_name: str
-    description: str | None
-    default_branch: str
-    private: bool
-    url: str
 
 
 class FileContent(TypedDict):
@@ -41,21 +33,6 @@ class ForkRef(TypedDict):
     full_name: str
     default_branch: str
     url: str
-
-
-async def get_repo(ctx: MCPRequest, repo: Repo) -> RepoInfo:
-    """Get repository metadata (description, default branch, visibility)."""
-    gate = ctx.http.app[GATE]
-    gate.check(ctx, "get_repo", "repo:read", repo)
-    async with gate.gh.get(f"/repos/{repo}") as resp:
-        data = await resp.json()
-    return {
-        "full_name": data["full_name"],
-        "description": data["description"],
-        "default_branch": data["default_branch"],
-        "private": data["private"],
-        "url": data["html_url"],
-    }
 
 
 async def get_file(

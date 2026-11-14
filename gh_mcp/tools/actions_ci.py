@@ -3,7 +3,7 @@
 import re
 from typing import Annotated, Literal, TypedDict
 
-from aiohttp_mcp import Doc, MCPRequest, ToolError
+from aiohttp_mcp_server import Doc, MCPRequest, ToolError
 from pydantic import Field
 
 from ..github import paginate

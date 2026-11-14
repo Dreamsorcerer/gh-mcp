@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 from aiohttp import ClientHandlerType, ClientRequest, ClientResponse, ClientSession, hdrs
-from aiohttp_mcp import ToolError
+from aiohttp_mcp_server import ToolError
 
 MAX_PAGES: Final = 10
 

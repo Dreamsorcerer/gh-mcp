@@ -2,7 +2,7 @@
 
 from typing import Any, Literal, TypedDict
 
-from aiohttp_mcp import MCPRequest
+from aiohttp_mcp_server import MCPRequest
 
 from ..github import paginate
 from ..policy import apply_prefix, apply_suffix

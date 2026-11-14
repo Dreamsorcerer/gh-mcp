@@ -4,7 +4,7 @@ import secrets
 from collections.abc import AsyncIterator
 from typing import Final
 
-import aiohttp_mcp
+import aiohttp_mcp_server
 from aiohttp import web
 
 from . import __version__
@@ -45,7 +45,7 @@ def build_app(cfg: Config) -> web.Application:
     audit = AuditLog(audit_path)
 
     auth_cfg = cfg["auth"]
-    authorization = aiohttp_mcp.LocalAuthorization(
+    authorization = aiohttp_mcp_server.LocalAuthorization(
         _check_credentials,
         resource=auth_cfg["resource"],
         secret=auth_cfg.get("secret"),
@@ -55,14 +55,14 @@ def build_app(cfg: Config) -> web.Application:
     app = web.Application()
     app[USERS] = auth_cfg["users"]
     app[AUDIT_LOG] = audit
-    aiohttp_mcp.setup(
+    aiohttp_mcp_server.setup(
         app,
         name="gh-mcp",
         version=__version__,
         title="GitHub access",
         instructions=INSTRUCTIONS,
         path=cfg.get("server", {}).get("path", DEFAULT_MCP_PATH),
-        tools=aiohttp_mcp.ToolRegistry(*ALL_TOOLS),
+        tools=aiohttp_mcp_server.ToolRegistry(*ALL_TOOLS),
         authorization=authorization,
     )
 

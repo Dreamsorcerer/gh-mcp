@@ -17,26 +17,6 @@ def audit_entries(audit_path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in audit_path.read_text().splitlines()]
 
 
-async def test_get_repo(make_app: MakeApp, fake_github: FakeGitHub) -> None:
-    fake_github.add(
-        "GET",
-        "/repos/aio-libs/aiohttp",
-        {
-            "full_name": "aio-libs/aiohttp",
-            "description": "HTTP client/server",
-            "default_branch": "master",
-            "private": False,
-            "html_url": "https://github.com/aio-libs/aiohttp",
-        },
-    )
-    client = await make_app([READ_ALL])
-    result = await call_tool(client, "get_repo", {"repo": "aio-libs/aiohttp"})
-    assert result["structuredContent"]["default_branch"] == "master"
-    # The PAT went to GitHub, not the client.
-    *_, headers = fake_github.requests[0]
-    assert headers["Authorization"] == "Bearer test-pat"
-
-
 async def test_get_file_decodes_base64(make_app: MakeApp, fake_github: FakeGitHub) -> None:
     fake_github.add(
         "GET",
@@ -54,6 +34,9 @@ async def test_get_file_decodes_base64(make_app: MakeApp, fake_github: FakeGitHu
         client, "get_file", {"repo": "o/r", "path": "setup.py"}
     )
     assert result["structuredContent"]["content"] == "print('hi')\n"
+    # The PAT went to GitHub, not the client.
+    *_, headers = fake_github.requests[0]
+    assert headers["Authorization"] == "Bearer test-pat"
 
 
 async def test_get_pr_diff_uses_diff_accept(
@@ -70,7 +53,7 @@ async def test_get_pr_diff_uses_diff_accept(
 
 async def test_read_denied_without_rule(make_app: MakeApp, fake_github: FakeGitHub) -> None:
     client = await make_app([Rule(actions=["*:read"], repos=["aio-libs/*"])])
-    result = await call_tool(client, "get_repo", {"repo": "evil/repo"})
+    result = await call_tool(client, "get_file", {"repo": "evil/repo", "path": "x"})
     assert "not permitted for evil/repo" in tool_error(result)
     assert not fake_github.requests  # never reached GitHub
 
@@ -425,11 +408,45 @@ async def test_search_issues_parses_repository(
     assert item["is_pull_request"] is False
 
 
+async def test_list_releases_prunes_assets(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    # A real release carries hundreds of asset objects and a full changelog;
+    # the tool must return only the four identifying fields.
+    fake_github.add(
+        "GET",
+        "/repos/o/r/releases",
+        [
+            {
+                "tag_name": "v1.1",
+                "name": "1.1",
+                "published_at": "2026-01-02T00:00:00Z",
+                "html_url": "https://github.com/o/r/releases/tag/v1.1",
+                "body": "changelog " * 1000,
+                "assets": [{"name": f"w{n}.whl"} for n in range(300)],
+            },
+            {
+                "tag_name": "v1.0",
+                "name": "1.0",
+                "published_at": "2026-01-01T00:00:00Z",
+                "html_url": "https://github.com/o/r/releases/tag/v1.0",
+                "body": "",
+                "assets": [],
+            },
+        ],
+    )
+    client = await make_app([READ_ALL])
+    result = await call_tool(client, "list_releases", {"repo": "o/r"})
+    items = result["structuredContent"]
+    assert [r["tag"] for r in items] == ["v1.1", "v1.0"]
+    assert set(items[0]) == {"tag", "name", "published_at", "url"}
+
+
 async def test_malformed_repo_rejected(make_app: MakeApp, fake_github: FakeGitHub) -> None:
     client = await make_app([READ_ALL])
-    result = await call_tool(client, "get_repo", {"repo": "no-owner"})
+    result = await call_tool(client, "get_file", {"repo": "no-owner", "path": "x"})
     assert "Invalid arguments" in tool_error(result)
-    result = await call_tool(client, "get_repo", {"repo": "a/b/c"})
+    result = await call_tool(client, "get_file", {"repo": "a/b/c", "path": "x"})
     assert "Invalid arguments" in tool_error(result)
     assert not fake_github.requests
 
