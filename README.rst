@@ -2,7 +2,7 @@ gh-mcp
 ======
 
 An MCP server granting agents fine-grained, policy-gated access to GitHub,
-built on `aiohttp-mcp <https://github.com/aio-libs/aiohttp-mcp>`_.
+built on `aiohttp-mcp-server <https://github.com/aio-libs/aiohttp-mcp-server>`_.
 
 The server holds the GitHub API token, so agents never see it. Every tool call passes
 through a policy engine mapping *(action, resource)* to allow/deny plus server-enforced
