@@ -1,7 +1,8 @@
 """Git tools: branches and commits via the Git Data API."""
 
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 
+from aiohttp import ClientSession
 from aiohttp_mcp import Doc, MCPRequest
 from pydantic import Field
 
@@ -21,6 +22,8 @@ class FileEdit(TypedDict):
     path: str
     # Omit to delete the file.
     content: NotRequired[str]
+    # Omit to keep an existing file's mode (new files become "100644").
+    mode: NotRequired[Literal["100644", "100755"]]
 
 
 async def create_branch(
@@ -42,6 +45,39 @@ async def create_branch(
     return {"branch": branch, "sha": sha, "url": write.url}
 
 
+async def _current_modes(
+    gh: ClientSession, repo: str, root: str, paths: list[str]
+) -> dict[str, str]:
+    """Each path's mode in the tree ``root``; absent for paths not in it.
+
+    Walks one directory listing per level (cached per directory), never a
+    recursive dump, which can truncate on large repositories.
+    """
+    listings: dict[str, dict[str, tuple[str, str]]] = {}
+
+    async def list_dir(prefix: str, sha: str) -> dict[str, tuple[str, str]]:
+        if (entries := listings.get(prefix)) is None:
+            async with gh.get(f"/repos/{repo}/git/trees/{sha}") as resp:
+                tree = (await resp.json())["tree"]
+            entries = {e["path"]: (e["mode"], e["sha"]) for e in tree}
+            listings[prefix] = entries
+        return entries
+
+    modes: dict[str, str] = {}
+    for path in paths:
+        prefix, sha = "", root
+        *dirs, name = path.split("/")
+        for part in dirs:
+            entry = (await list_dir(prefix, sha)).get(part)
+            if entry is None or entry[0] != "040000":
+                break  # No such directory: a new file.
+            prefix, sha = f"{prefix}{part}/", entry[1]
+        else:
+            if (entry := (await list_dir(prefix, sha)).get(name)) is not None:
+                modes[path] = entry[0]
+    return modes
+
+
 async def commit_files(
     ctx: MCPRequest,
     repo: Repo,
@@ -49,7 +85,12 @@ async def commit_files(
     message: Annotated[str, Doc("One line summary of changes")],
     files: Annotated[list[FileEdit], Field(min_length=1)],
 ) -> GitRef:
-    """Create a commit on a branch."""
+    """Create a commit on a branch.
+
+    Each entry replaces the file at ``path`` with ``content`` (omit
+    ``content`` to delete the file). Existing files keep their current
+    mode unless ``mode`` is set, new files are created as "100644".
+    """
     gate = ctx.http.app[GATE]
 
     async with gate.write(ctx, "commit_files", "git:commit", repo) as write:
@@ -61,6 +102,9 @@ async def commit_files(
         async with gate.gh.get(f"/repos/{repo}/git/commits/{head}") as resp:
             base_tree = (await resp.json())["tree"]["sha"]
 
+        lookups = [f["path"] for f in files if "content" in f and "mode" not in f]
+        current = await _current_modes(gate.gh, repo, base_tree, lookups)
+
         entries = []
         for file in files:
             sha = None
@@ -68,8 +112,14 @@ async def commit_files(
                 blob = {"content": content, "encoding": "utf-8"}
                 async with gate.gh.post(f"/repos/{repo}/git/blobs", json=blob) as resp:
                     sha = (await resp.json())["sha"]
+            default = "100755" if current.get(file["path"]) == "100755" else "100644"
             entries.append(
-                {"path": file["path"], "mode": "100644", "type": "blob", "sha": sha}
+                {
+                    "path": file["path"],
+                    "mode": file.get("mode", default),
+                    "type": "blob",
+                    "sha": sha,
+                }
             )
         tree = {"base_tree": base_tree, "tree": entries}
         async with gate.gh.post(f"/repos/{repo}/git/trees", json=tree) as resp:

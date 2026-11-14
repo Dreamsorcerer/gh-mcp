@@ -29,6 +29,16 @@ def add_git_routes(gh: FakeGitHub) -> None:
     gh.add(
         "PATCH", "/repos/o/r/git/refs/heads/agent/fix", {"object": {"sha": "commit555"}}
     )
+    gh.add(
+        "GET",
+        "/repos/o/r/git/trees/tree222",
+        {"tree": [{"path": "src", "mode": "040000", "type": "tree", "sha": "srctree"}]},
+    )
+    gh.add(
+        "GET",
+        "/repos/o/r/git/trees/srctree",
+        {"tree": [{"path": "a.py", "mode": "100644", "type": "blob", "sha": "olda"}]},
+    )
 
 
 async def test_create_branch_applies_prefix(
@@ -109,9 +119,141 @@ async def test_commit_files(
     }
     patched = next(r for r in fake_github.requests if r[0] == "PATCH")
     assert patched[3] == {"sha": "commit555"}  # no force key, ever
+    # The existing file's mode was looked up by walking its parent trees;
+    # the deletion needed no lookup.
+    looked_up = [r[1] for r in fake_github.requests if "/git/trees/" in r[1]]
+    assert looked_up == ["/repos/o/r/git/trees/tree222", "/repos/o/r/git/trees/srctree"]
     (entry,) = audit_entries(audit_path)
     assert entry["action"] == "git:commit"
     assert entry["url"] == "https://github.com/o/r/commit/commit555"
+
+
+async def test_commit_files_preserves_executable_mode(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    """An update keeps 100755; a symlink is replaced by a regular file."""
+    add_git_routes(fake_github)
+    fake_github.add(
+        "GET",
+        "/repos/o/r/git/trees/tree222",
+        {
+            "tree": [
+                {"path": "build.sh", "mode": "100755", "type": "blob", "sha": "old1"},
+                {"path": "link", "mode": "120000", "type": "blob", "sha": "old2"},
+            ]
+        },
+    )
+    client = await make_app([GIT_RULE])
+    await call_tool(
+        client,
+        "commit_files",
+        {
+            "repo": "o/r",
+            "branch": "fix",
+            "message": "m",
+            "files": [
+                {"path": "build.sh", "content": "#!/bin/sh\n"},
+                {"path": "link", "content": "not a symlink"},
+            ],
+        },
+    )
+    tree = next(r for r in fake_github.requests if r[1] == "/repos/o/r/git/trees")
+    assert tree[3] == {
+        "base_tree": "tree222",
+        "tree": [
+            {"path": "build.sh", "mode": "100755", "type": "blob", "sha": "blob333"},
+            {"path": "link", "mode": "100644", "type": "blob", "sha": "blob333"},
+        ],
+    }
+    # Both files sit in the root directory: one listing serves both.
+    looked_up = [r[1] for r in fake_github.requests if "/git/trees/" in r[1]]
+    assert looked_up == ["/repos/o/r/git/trees/tree222"]
+
+
+async def test_commit_files_explicit_mode_skips_lookup(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    add_git_routes(fake_github)
+    client = await make_app([GIT_RULE])
+    await call_tool(
+        client,
+        "commit_files",
+        {
+            "repo": "o/r",
+            "branch": "fix",
+            "message": "m",
+            "files": [{"path": "tools/run.sh", "content": "x", "mode": "100755"}],
+        },
+    )
+    tree = next(r for r in fake_github.requests if r[1] == "/repos/o/r/git/trees")
+    assert tree[3] == {
+        "base_tree": "tree222",
+        "tree": [
+            {"path": "tools/run.sh", "mode": "100755", "type": "blob", "sha": "blob333"}
+        ],
+    }
+    assert not any("/git/trees/" in r[1] for r in fake_github.requests)
+
+
+async def test_commit_files_new_paths_default_mode(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    """Paths absent from the base tree become 100644, walking no further than needed."""
+    add_git_routes(fake_github)
+    fake_github.add(
+        "GET",
+        "/repos/o/r/git/trees/tree222",
+        {
+            "tree": [
+                {"path": "src", "mode": "040000", "type": "tree", "sha": "srctree"},
+                {"path": "README", "mode": "100644", "type": "blob", "sha": "readme1"},
+            ]
+        },
+    )
+    client = await make_app([GIT_RULE])
+    await call_tool(
+        client,
+        "commit_files",
+        {
+            "repo": "o/r",
+            "branch": "fix",
+            "message": "m",
+            "files": [
+                {"path": "new/a.txt", "content": "a"},  # no new/ directory
+                {"path": "src/new.py", "content": "b"},  # dir exists, file doesn't
+                {"path": "README/x", "content": "c"},  # README is a file, not a dir
+            ],
+        },
+    )
+    tree = next(r for r in fake_github.requests if r[1] == "/repos/o/r/git/trees")
+    assert tree[3] == {
+        "base_tree": "tree222",
+        "tree": [
+            {"path": "new/a.txt", "mode": "100644", "type": "blob", "sha": "blob333"},
+            {"path": "src/new.py", "mode": "100644", "type": "blob", "sha": "blob333"},
+            {"path": "README/x", "mode": "100644", "type": "blob", "sha": "blob333"},
+        ],
+    }
+    looked_up = [r[1] for r in fake_github.requests if "/git/trees/" in r[1]]
+    assert looked_up == ["/repos/o/r/git/trees/tree222", "/repos/o/r/git/trees/srctree"]
+
+
+async def test_commit_files_rejects_bad_mode(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    client = await make_app([GIT_RULE])
+    result = await call_tool(
+        client,
+        "commit_files",
+        {
+            "repo": "o/r",
+            "branch": "fix",
+            "message": "m",
+            "files": [{"path": "a", "content": "b", "mode": "100777"}],
+        },
+    )
+    assert "Invalid arguments" in tool_error(result)
+    assert not fake_github.requests
 
 
 async def test_commit_files_non_fast_forward(
