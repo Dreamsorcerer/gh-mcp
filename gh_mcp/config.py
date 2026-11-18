@@ -8,7 +8,6 @@ from pydantic import Field, TypeAdapter
 from pydantic.experimental.pipeline import validate_as
 
 DEFAULT_API_URL: Final = "https://api.github.com"
-DEFAULT_SOCK: Final = Path("gh-mcp.sock")
 DEFAULT_MCP_PATH: Final = "/mcp"
 DEFAULT_AUDIT_PATH: Final = Path("audit.jsonl")
 DEFAULT_EMAIL_HOUR: Final = 7
@@ -68,8 +67,6 @@ class AuthConfig(TypedDict):
 
 # TODO(PY315): closed=True
 class ServerConfig(TypedDict):
-    # Unix socket the server listens on (put a reverse proxy in front).
-    sock: NotRequired[Path]
     path: NotRequired[str]
 
 

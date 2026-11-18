@@ -13,6 +13,7 @@ dependencies = [
     "aiohttp>=3.12",
     "aiohttp-mcp-server",
     "pydantic>=2.5",
+    "systemd-python",
 ]
 
 [dependency-groups]

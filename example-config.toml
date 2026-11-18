@@ -17,9 +17,6 @@
 [github]
 token = "github_pat_..."        # fine-grained PAT (chmod 600 this file)
 
-[server]
-sock = "/run/gh-mcp/gh-mcp.sock"   # unix socket; serve via a reverse proxy
-
 [auth]
 resource = "https://mcp.example.org"
 secret =  # python3 -c "import secrets; print(secrets.token_hex(32))"
