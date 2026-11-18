@@ -1,5 +1,7 @@
 import base64
+import io
 import json
+import zipfile
 from pathlib import Path
 
 from aiohttp import web
@@ -497,6 +499,136 @@ async def test_list_releases_prunes_assets(
     items = result["structuredContent"]
     assert [r["tag"] for r in items] == ["v1.1", "v1.0"]
     assert set(items[0]) == {"tag", "name", "published_at", "url"}
+
+
+async def test_list_run_artifacts_prunes(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    fake_github.add(
+        "GET",
+        "/repos/o/r/actions/runs/7/artifacts",
+        {
+            "artifacts": [
+                {
+                    "id": 42,
+                    "name": "firewall-decisions",
+                    "size_in_bytes": 1234,
+                    "expired": False,
+                    "created_at": "2026-11-14T00:00:00Z",
+                    "archive_download_url": "https://api.github.com/.../zip",
+                    "workflow_run": {"id": 7},
+                }
+            ]
+        },
+    )
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client, "list_run_artifacts", {"repo": "o/r", "run_id": 7}
+    )
+    item = result["structuredContent"][0]
+    assert item == {
+        "id": 42,
+        "name": "firewall-decisions",
+        "size_in_bytes": 1234,
+        "expired": False,
+        "created_at": "2026-11-14T00:00:00Z",
+    }
+
+
+def _zip_bytes(files: dict[str, str]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+async def _artifact_app(
+    fake_github: FakeGitHub, aiohttp_client: AiohttpClient, zip_bytes: bytes
+) -> dict[str, str]:
+    """Wire artifact 42's zip endpoint to a 302 to a different-origin blob.
+
+    Returns the headers the blob host saw, so tests can assert the GitHub
+    bearer token was never forwarded across the redirect.
+    """
+    seen_headers: dict[str, str] = {}
+
+    async def blob(request: web.Request) -> web.Response:
+        seen_headers.update(request.headers)
+        return web.Response(body=zip_bytes)
+
+    blob_app = web.Application()
+    blob_app.router.add_get("/signed/zip", blob)
+    blob_client = await aiohttp_client(blob_app)
+    fake_github.add(
+        "GET",
+        "/repos/o/r/actions/artifacts/42/zip",
+        "",
+        status=302,
+        headers={"Location": str(blob_client.make_url("/signed/zip"))},
+    )
+    return seen_headers
+
+
+async def test_read_artifact_lists_entries(
+    make_app: MakeApp, fake_github: FakeGitHub, aiohttp_client: AiohttpClient
+) -> None:
+    zip_bytes = _zip_bytes({"log.txt": "hello", "nested/report.json": "{}"})
+    seen = await _artifact_app(fake_github, aiohttp_client, zip_bytes)
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client, "read_artifact", {"repo": "o/r", "artifact_id": 42}
+    )
+    text = result["content"][0]["text"]
+    assert "2 entries" in text
+    assert "log.txt" in text and "nested/report.json" in text
+    # The signed blob host must never see the GitHub bearer token.
+    assert seen and "Authorization" not in seen
+
+
+async def test_read_artifact_reads_file(
+    make_app: MakeApp, fake_github: FakeGitHub, aiohttp_client: AiohttpClient
+) -> None:
+    log = "\n".join(f"line {i}" for i in range(1, 11))
+    zip_bytes = _zip_bytes({"decisions.log": log})
+    await _artifact_app(fake_github, aiohttp_client, zip_bytes)
+    client = await make_app([READ_ALL])
+    whole = await call_tool(
+        client,
+        "read_artifact",
+        {"repo": "o/r", "artifact_id": 42, "path": "decisions.log", "tail": 0},
+    )
+    assert whole["content"][0]["text"] == log
+    grepped = await call_tool(
+        client,
+        "read_artifact",
+        {"repo": "o/r", "artifact_id": 42, "path": "decisions.log", "grep": "line 3$"},
+    )
+    assert grepped["content"][0]["text"] == "3:line 3"
+
+
+async def test_read_artifact_unknown_path(
+    make_app: MakeApp, fake_github: FakeGitHub, aiohttp_client: AiohttpClient
+) -> None:
+    await _artifact_app(fake_github, aiohttp_client, _zip_bytes({"a.txt": "x"}))
+    client = await make_app([READ_ALL])
+    result = await call_tool(
+        client, "read_artifact", {"repo": "o/r", "artifact_id": 42, "path": "missing"}
+    )
+    error = tool_error(result)
+    assert "not in the artifact" in error and "'a.txt'" in error
+
+
+async def test_read_artifact_requires_actions_read(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    client = await make_app([Rule(actions=["code:read"])])
+    result = await call_tool(
+        client, "read_artifact", {"repo": "o/r", "artifact_id": 42}
+    )
+    assert "not permitted" in tool_error(result)
+    # Denied before any download is attempted.
+    assert not fake_github.requests
 
 
 async def test_malformed_repo_rejected(make_app: MakeApp, fake_github: FakeGitHub) -> None:

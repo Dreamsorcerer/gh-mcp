@@ -29,6 +29,8 @@ ALL_TOOLS: Final = (
     Tool(actions_ci.list_workflow_runs, read_only=True, idempotent=True),
     Tool(actions_ci.list_run_jobs, read_only=True, idempotent=True),
     Tool(actions_ci.get_job_logs, read_only=True, idempotent=True),
+    Tool(actions_ci.list_run_artifacts, read_only=True, idempotent=True),
+    Tool(actions_ci.read_artifact, read_only=True, idempotent=True),
     Tool(actions_ci.list_releases, read_only=True, idempotent=True),
     # Writes.
     Tool(issues.add_comment, destructive=False),
