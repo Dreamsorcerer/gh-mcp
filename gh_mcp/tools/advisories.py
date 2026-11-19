@@ -6,7 +6,7 @@ from aiohttp_mcp_server import Doc, MCPRequest, ToolError
 from pydantic import Field
 from yarl import URL
 
-from ._base import GATE, Repo
+from ._base import GATE, GhsaId, Repo
 
 
 class AdvisorySummary(TypedDict):
@@ -111,7 +111,7 @@ async def list_repo_advisories(
     }
 
 
-async def get_advisory(ctx: MCPRequest, repo: Repo, ghsa_id: str) -> AdvisoryDetail:
+async def get_advisory(ctx: MCPRequest, repo: Repo, ghsa_id: GhsaId) -> AdvisoryDetail:
     """Get a repository security advisory's full details."""
     gate = ctx.http.app[GATE]
     gate.check(ctx, "get_advisory", "ghsa:read", repo)
@@ -132,7 +132,7 @@ async def get_advisory(ctx: MCPRequest, repo: Repo, ghsa_id: str) -> AdvisoryDet
     }
 
 
-async def create_advisory_fork(ctx: MCPRequest, repo: Repo, ghsa_id: str) -> RepoRef:
+async def create_advisory_fork(ctx: MCPRequest, repo: Repo, ghsa_id: GhsaId) -> RepoRef:
     """Create the temporary private fork for collaborating on a GHSA fix."""
     gate = ctx.http.app[GATE]
     async with gate.write(ctx, "create_advisory_fork", "ghsa:create_fork", repo) as write:
@@ -145,7 +145,7 @@ async def create_advisory_fork(ctx: MCPRequest, repo: Repo, ghsa_id: str) -> Rep
 async def update_advisory(
     ctx: MCPRequest,
     repo: Repo,
-    ghsa_id: str,
+    ghsa_id: GhsaId,
     summary: str | None = None,
     description: str | None = None,
     vulnerabilities: Annotated[

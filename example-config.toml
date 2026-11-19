@@ -11,7 +11,7 @@
 #   code:read issue:read pr:read search:read release:read
 #   actions:read ghsa:read raw:read (gh_api_get passthrough)
 #   issue:create issue:comment pr:create pr:update ghsa:create_fork ghsa:update
-#   repo:fork git:branch git:commit
+#   repo:fork git:branch git:commit (commit_files and merge_branch)
 # "*:read" matches every read action.
 
 [github]

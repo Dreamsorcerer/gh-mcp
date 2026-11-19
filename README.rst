@@ -42,9 +42,10 @@ Rules are evaluated in file order; the first rule whose ``actions`` and
     body_prefix = "This PR was agent-authored.\n\n"
 
 Writes are curated tools only (``create_issue``, ``add_comment``,
-``create_pr``, ``update_pr``, ``create_fork``, ``create_advisory_fork``);
-reads are covered by dedicated tools plus a policy-gated raw GET
-passthrough (``gh_api_get``).
+``create_pr``, ``update_pr``, ``create_branch``, ``commit_files``,
+``merge_branch``, ``create_fork``, ``create_advisory_fork``,
+``update_advisory``); reads are covered by dedicated tools plus a
+policy-gated raw GET passthrough (``gh_api_get``).
 
 Per-call user approval
 ----------------------
@@ -67,3 +68,16 @@ PRs and forks on any repository:
     [rule.constraints]
     draft_only = true
     title_prefix = "[agent] "
+
+Branches
+--------
+
+``create_branch``, ``commit_files`` and ``merge_branch`` only ever write to
+a branch carrying the matched rule's ``branch_prefix``, which is forced onto
+whatever name the agent gives.
+
+``merge_branch`` (also ``git:commit``) brings such a branch up to date with
+another, such as a pull request with its base. GitHub performs the merge
+when the two do not conflict. Otherwise the agent is told which files both
+have changed and settles each one, with its merged content or by taking one
+side's version, and the server builds the merge commit itself.

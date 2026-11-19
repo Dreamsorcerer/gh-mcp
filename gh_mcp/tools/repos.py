@@ -6,7 +6,7 @@ from typing import TypedDict
 from aiohttp_mcp_server import MCPRequest, ToolError
 
 from ..github import paginate
-from ._base import GATE, Repo
+from ._base import GATE, Repo, literal_path
 
 
 class FileContent(TypedDict):
@@ -35,6 +35,15 @@ class ForkRef(TypedDict):
     url: str
 
 
+def _contents(repo: str, path: str) -> str:
+    """The API path of the contents at ``path``, which is within ``repo``."""
+    if not literal_path(path) or "?" in path or "#" in path:
+        raise ToolError(
+            "path must be a plain path: no '.' or '..' parts, '%', '?' or '#'"
+        )
+    return f"/repos/{repo}/contents/{path}"
+
+
 async def get_file(
     ctx: MCPRequest, repo: Repo, path: str, ref: str | None = None
 ) -> FileContent:
@@ -42,7 +51,7 @@ async def get_file(
     gate = ctx.http.app[GATE]
     gate.check(ctx, "get_file", "code:read", repo)
     params = {"ref": ref} if ref else None
-    async with gate.gh.get(f"/repos/{repo}/contents/{path}", params=params) as resp:
+    async with gate.gh.get(_contents(repo, path), params=params) as resp:
         data = await resp.json()
     if data.get("type") != "file":
         raise ToolError(f"{path} is not a file; use list_dir for directories")
@@ -65,7 +74,7 @@ async def list_dir(
     gate = ctx.http.app[GATE]
     gate.check(ctx, "list_dir", "code:read", repo)
     params = {"ref": ref} if ref else None
-    async with gate.gh.get(f"/repos/{repo}/contents/{path}", params=params) as resp:
+    async with gate.gh.get(_contents(repo, path), params=params) as resp:
         data = await resp.json()
     if isinstance(data, dict):
         raise ToolError(f"{path} is a file; use get_file to read it")

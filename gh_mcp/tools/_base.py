@@ -24,8 +24,29 @@ _APPROVED: Final = "approved by the user"
 Repo = Annotated[
     str,
     Doc("The repository as owner/name, e.g. 'aio-libs/aiohttp'"),
-    Field(pattern=r"^[\w.-]+/[\w.-]+$"),
+    Field(pattern=r"^[\w.-]*[\w-][\w.-]*/[\w.-]*[\w-][\w.-]*$"),
 ]
+
+# A branch name per git's ref-name rules, and without "#" or "%" either.
+_REF_CHAR: Final = r"[^\x00-\x20\x7f~^:?*\[\\#%/.]"
+Branch = Annotated[str, Field(pattern=rf"^{_REF_CHAR}+(?:[./]{_REF_CHAR}+)*$")]
+
+GhsaId = Annotated[
+    str,
+    Doc("The advisory's id, e.g. 'GHSA-xxxx-xxxx-xxxx'"),
+    Field(pattern=r"^[A-Za-z0-9-]+$"),
+]
+
+
+def literal_path(path: str) -> bool:
+    """Whether a path of several parts is requested just as it reads.
+
+    That takes it having no "." or ".." parts, nor what would leave some once
+    read as a URL: a "%" escape, a tab or a line break. Any "?" or "#" is for
+    the caller to deal with.
+    """
+    dropped_or_decoded = {"\t", "\r", "\n", "%"}
+    return dropped_or_decoded.isdisjoint(path) and {".", ".."}.isdisjoint(path.split("/"))
 
 
 @dataclass(slots=True)

@@ -8,8 +8,16 @@ from aiohttp_mcp_server import ToolError
 MAX_PAGES: Final = 10
 
 
+class GitHubError(ToolError):
+    """An error response from GitHub, worded for the model to act on."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 async def _check_errors(req: ClientRequest, handler: ClientHandlerType) -> ClientResponse:
-    """Map error responses to a ToolError the model can act on."""
+    """Map error responses to a GitHubError."""
     resp = await handler(req)
     if resp.ok:
         return resp
@@ -23,10 +31,11 @@ async def _check_errors(req: ClientRequest, handler: ClientHandlerType) -> Clien
             message = parsed["message"]
     retry_after = resp.headers.get(hdrs.RETRY_AFTER)
     if resp.status in {403, 429} and retry_after is not None:
-        raise ToolError(
-            f"GitHub rate limited this call. Retry in {retry_after} seconds: {message}"
+        raise GitHubError(
+            resp.status,
+            f"GitHub rate limited this call. Retry in {retry_after} seconds: {message}",
         )
-    raise ToolError(f"GitHub API error (HTTP {resp.status}): {message}")
+    raise GitHubError(resp.status, f"GitHub API error (HTTP {resp.status}): {message}")
 
 
 def github_session(token: str, api_url: str) -> ClientSession:

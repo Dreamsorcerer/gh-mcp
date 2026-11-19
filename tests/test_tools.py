@@ -4,6 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
 from aiohttp import web
 from conftest import FakeGitHub, MakeApp, call_tool, tool_error
 from pytest_aiohttp import AiohttpClient
@@ -298,6 +299,34 @@ async def test_gh_api_get_rejects_relative_path(make_app: MakeApp) -> None:
     assert "absolute GitHub API path" in tool_error(result)
     result = await call_tool(client, "gh_api_get", {"path": "/repos/../user"})
     assert "absolute GitHub API path" in tool_error(result)
+
+
+async def test_gh_api_get_policy_is_for_the_path_requested(
+    make_app: MakeApp, fake_github: FakeGitHub
+) -> None:
+    """A query is no part of the repository or path the rules are matched on."""
+    fake_github.add("GET", "/repos/o/r/branches", {"ok": True})
+    client = await make_app(
+        [
+            Rule(actions=["raw:read"], repos=["o/secret"], effect="deny"),
+            Rule(actions=["raw:read"], constraints=Constraints(paths=["*/branches"])),
+        ]
+    )
+    for path in (
+        "/repos/o/secret?x=/branches",
+        "/repos/o/secret#/branches",
+        "/repos/o/r/actions/secrets?x=/branches",
+        "/repos/o/r/actions/secrets#/branches",
+    ):
+        result = await call_tool(client, "gh_api_get", {"path": path})
+        assert result.get("isError"), path
+    assert not fake_github.requests
+    # The query itself still goes with the request.
+    result = await call_tool(
+        client, "gh_api_get", {"path": "/repos/o/r/branches?protected=a%20b"}
+    )
+    assert result["structuredContent"] == {"ok": True}
+    assert fake_github.requests[0][2] == {"protected": "a b"}
 
 
 async def test_gh_api_get_repo_scoped_only(
@@ -637,6 +666,39 @@ async def test_malformed_repo_rejected(make_app: MakeApp, fake_github: FakeGitHu
     assert "Invalid arguments" in tool_error(result)
     result = await call_tool(client, "get_file", {"repo": "a/b/c", "path": "x"})
     assert "Invalid arguments" in tool_error(result)
+    assert not fake_github.requests
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        # Each would be requested as another path once read as a URL, which
+        # resolves "." and ".." parts, decodes "%2e" and drops tabs and
+        # line breaks: outside the repository the policy was asked about.
+        ("get_file", {"repo": "o/r", "path": "../../../x/y/contents/secret"}),
+        ("get_file", {"repo": "o/r", "path": "a/%2e%2e/%2E%2E/b"}),
+        ("get_file", {"repo": "o/r", "path": "a/.\t./.\n./b"}),
+        ("list_dir", {"repo": "o/r", "path": "../../../x/y/contents"}),
+        ("gh_api_get", {"path": "/repos/o/r/%2e%2e/%2e%2e/%2e%2e/user"}),
+        ("gh_api_get", {"path": "/repos/o/r/.\r./.\r./.\r./user"}),
+        ("gh_api_get", {"path": "/repos/./o/r/branches"}),
+        ("get_advisory", {"repo": "o/r", "ghsa_id": "../pulls/5"}),
+        ("create_advisory_fork", {"repo": "o/r", "ghsa_id": "../../../x/y"}),
+        ("update_advisory", {"repo": "o/r", "ghsa_id": "../issues/5", "state": "closed"}),
+        ("list_issues", {"repo": "../user"}),
+        ("get_file", {"repo": "o/..", "path": "x"}),
+        # Or cut short, as a query or fragment.
+        ("get_file", {"repo": "o/r", "path": "docs?/secret"}),
+        ("list_dir", {"repo": "o/r", "path": "docs#/secret"}),
+    ],
+)
+async def test_arguments_cannot_redirect_requests(
+    make_app: MakeApp, fake_github: FakeGitHub, tool: str, arguments: dict[str, object]
+) -> None:
+    # Policy permits everything, so nothing else stands in the way.
+    client = await make_app([Rule(actions=["*"])])
+    result = await call_tool(client, tool, arguments)
+    assert result.get("isError"), result
     assert not fake_github.requests
 
 
